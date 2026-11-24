@@ -1,0 +1,367 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+\setlength{\parskip}{0.55em}
+\setlength{\parindent}{0pt}
+\setlist{itemsep=0.25em,topsep=0.3em}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}[theorem]{Definition}
+\newcommand{\VC}{\textsc{Vertex Cover}}
+\newcommand{\FPT}{\textsf{FPT}}
+\newcommand{\XP}{\textsf{XP}}
+\newcommand{\W}{\mathsf{W}}
+
+\title{Parameterized Complexity and Vertex Cover\\\large Independent Research Project Lecture Notes}
+\author{CMU 15-455 Project}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section*{Project scope and lecture plan}
+\addcontentsline{toc}{section}{Project scope and lecture plan}
+
+These notes introduce parameterized complexity through \VC. They assume familiarity with graphs, asymptotic running time, and NP-hardness, and introduce the matching concepts needed for the crown argument. The material is organized as two 80-minute lectures: the first develops fixed-parameter algorithms and basic preprocessing; the second proves a crown reduction and a kernelization theorem with a $3k$-vertex bound.
+
+\begin{center}
+\begin{tabular}{llr}
+\textbf{Lecture 1} & Motivation & 10 min \\
+                   & Fixed-parameter tractability and hardness & 20 min \\
+                   & Branching algorithms & 25 min \\
+                   & Kernelization and a quadratic kernel & 25 min \\
+\textbf{Lecture 2} & Matchings and crown reductions & 30 min \\
+                   & The $3k$-vertex kernel theorem & 50 min
+\end{tabular}
+\end{center}
+
+\section{Motivation: Vertex Cover}
+
+\subsection{What NP-completeness tells us}
+
+NP-completeness is a worst-case classification. If an NP-complete problem has a polynomial-time algorithm for all inputs, then $\mathsf{P}=\mathsf{NP}$. This gives strong evidence that no such general algorithm exists, but it does not explain whether inputs with useful structure can be handled efficiently. Parameterized complexity refines the question by separating the parameter $k$ from the rest of the input and asking whether the potentially expensive work can be confined to a function of $k$.
+
+\subsection{Vertex Cover review}
+
+Recall the parameterized decision problem: given a graph $G=(V,E)$ and a nonnegative integer $k$, decide whether $G$ has a vertex cover of size at most $k$.
+
+\begin{definition}[Parameterized Vertex Cover]
+Fix a finite alphabet $\Sigma$ and an encoding $\langle G\rangle\in\Sigma^*$ for each finite simple graph $G=(V,E)$. The parameterized Vertex Cover problem is the language
+\[
+\mathcal{VC}=\left\{(\langle G\rangle,k)\in\Sigma^*\times\mathbb{N}:\exists C\subseteq V,\ |C|\leq k,\text{ and }\forall uv\in E,\ u\in C\text{ or }v\in C\right\}.
+\]
+A set $C$ satisfying this condition is a vertex cover. The input graph is the main instance, and $k$ is the parameter.
+\end{definition}
+
+The parameterized version of \VC{} asks whether a graph has a vertex cover of size at most $k$. The graph may be large even when the allowed cover size $k$ is small. This makes Vertex Cover a useful example: it is NP-complete when $k$ is part of the input, yet its parameterized version admits an algorithm whose polynomial exponent is independent of $k$.
+
+\subsection{Why keep track of $k$?}
+
+Classical complexity usually measures an input by its total size. In a graph, that means the number of vertices and edges. Parameterized complexity records a second quantity, the parameter $k$, which may capture the difficult part of a particular instance.
+
+For example, a brute-force algorithm over all subsets of a graph with 1,000 vertices considers up to $2^{1000}$ possibilities. Searching only subsets of size at most 10 is a substantial reduction, but it is still not automatically feasible: the number of such subsets is on the order of $n^{10}$, whose exponent depends on the parameter. Parameterized algorithms seek a stronger guarantee: a fixed polynomial dependence on the full input size, with rapid growth isolated in a function of $k$.
+
+For \VC{}, brute force checks all subsets of at most $k$ vertices, taking $n^{O(k)}$ time. For each fixed $k$ this is polynomial in the graph size, but its exponent depends on $k$; it does not give one polynomial exponent that works for every parameter value. The parameterized question is whether instances with a small cover budget can be solved efficiently even when the graph is large.
+
+\section{Fixed-parameter tractability}
+
+\subsection{Parameterized problems and running times}
+
+A parameterized problem keeps the ordinary input and a distinguished integer parameter together. This lets the running-time analysis separate the input size from the quantity expected to be small.
+
+\begin{definition}[Parameterized problem]
+A parameterized decision problem is a language $Q\subseteq\Sigma^*\times\mathbb{N}$, where $\Sigma$ is a fixed finite alphabet. An instance is a pair $(x,k)$; the string $x$ encodes the ordinary input, and $k$ is the parameter. We use the standard parameterized size measure
+\[
+N:=|x|+k,
+\]
+which corresponds to counting $k$ in unary for this measure.
+\end{definition}
+
+For \VC{}, $x=\langle G\rangle$ encodes the graph and $k$ is the largest permitted cover size. We write $n=|V(G)|$ and $m=|E(G)|$.
+
+\begin{definition}[Fixed-parameter tractability]
+A parameterized problem $Q$ is fixed-parameter tractable, or in $\FPT$, if there exist a single deterministic algorithm $A$, a computable function $f:\mathbb{N}\to\mathbb{N}$, and a constant $c\geq 0$ such that for every instance $(x,k)$, algorithm $A$ correctly decides whether $(x,k)\in Q$ in time
+\[
+f(k)\,N^c,
+\]
+where $N=|x|+k$. The algorithm is uniform: the same $A$ handles every value of $k$.
+\end{definition}
+
+The function $f$ may grow quickly; the exponent $c$ must not depend on $k$. For example, $2^kN^3$ and $k!N^2$ are FPT running times. A polynomial-time bound such as $N^5$ is FPT as well, with $f(k)=1$. For graph input, $O(2^k(n+m))$ is FPT under a standard graph encoding.
+
+\begin{definition}[XP]
+The class $\XP$ consists of parameterized problems solvable in slice-wise polynomial time: for each fixed parameter value, the running time is polynomial in the input size, although its degree may depend on that value. Formally, $Q$ is in $\XP$ if there are computable functions $f,g:\mathbb{N}\to\mathbb{N}$ and an algorithm deciding every $(x,k)$ in time
+\[
+f(k)\,N^{g(k)},
+\]
+where $N=|x|+k$.
+\end{definition}
+
+For every fixed $k$, an XP running time is polynomial in the input size, but the polynomial degree may depend on $k$. Thus enumerating all subsets of at most $k$ vertices gives an XP algorithm for Vertex Cover, with a bound on the order of $N^k$. Since an FPT running time is also an XP running time, $\FPT\subseteq\XP$. This inclusion is not asserted to be strict here.
+
+\subsection{Parameterized reductions}
+
+These reductions are used to compare the difficulty of parameterized problems and to transfer hardness results.
+
+\begin{definition}[FPT many-one reduction]
+Let $Q,Q'\subseteq\Sigma^*\times\mathbb{N}$ be parameterized problems. An FPT many-one reduction from $Q$ to $Q'$ is an algorithm that maps each $(x,k)$ to an instance $(x',k')$ such that there are computable functions $f,g$ and a constant $c$ for which:
+\begin{enumerate}
+  \item the algorithm runs in time at most $f(k)(|x|+k)^c$;
+  \item $(x,k)\in Q$ if and only if $(x',k')\in Q'$;
+  \item $k'\leq g(k)$.
+\end{enumerate}
+\end{definition}
+
+The running-time bound also controls the output size: the reduction writes at most $f(k)(|x|+k)^c$ symbols. Since $k'\leq g(k)$, there is a computable function $h$ such that the output instance satisfies
+\[
+|x'|+k'\leq h(k)(|x|+k)^c.
+\]
+Thus the output can grow polynomially with the input size, with an exponent independent of $k$, while its parameter remains bounded by a function of $k$.
+
+The parameter bound ensures that a reduction does not turn a small source parameter into an unbounded target parameter. This definition is included for context; the Vertex Cover algorithms proved below do not require a hardness reduction.
+
+\paragraph{Why these reductions matter.} FPT reductions preserve fixed-parameter tractability: if $Q\leq_{\FPT}Q'$ and $Q'\in\FPT$, then $Q\in\FPT$. To see this, first compute the reduction and then run the FPT algorithm for $Q'$; the target parameter is bounded by a function of the source parameter, and the reduction's output length is polynomially bounded in the source input length.
+
+\paragraph{A stronger obstruction: parameterized coloring.} In the parameterized $k$-\textsc{Coloring} problem, the input is a graph $G$ and an integer $k$, the parameter is $k$, and the question is whether $G$ has a proper coloring with at most $k$ colors. We know that 3-\textsc{Coloring} is NP-complete; its membership in NP is not proved here. For any fixed $k>3$, reduce 3-\textsc{Coloring} to $k$-\textsc{Coloring} by adding a clique of $k-3$ new vertices and joining every new vertex to every original vertex. The new clique uses $k-3$ distinct colors, leaving at most three colors for $G$; thus the new graph is $k$-colorable exactly when $G$ is 3-colorable. Hence, for every fixed $k\geq 3$, $k$-\textsc{Coloring} is NP-hard; its membership in NP is standard and assumed. Consequently, an FPT algorithm for parameterized $k$-\textsc{Coloring} would, on the slice $k=3$, decide 3-\textsc{Coloring} in polynomial time. Therefore, unless $\mathsf{P}=\mathsf{NP}$, parameterized $k$-\textsc{Coloring} has no FPT algorithm (indeed, no XP algorithm). This is called \emph{para-NP-hardness}: NP-hardness already occurs for a fixed value of the parameter.
+
+\begin{quote}\small
+\textbf{Side note: the W-hierarchy.} The class $\W[1]$ is a parameterized complexity class used to classify problems believed not to be FPT. The problem $k$-\textsc{Clique} is $\W[1]$-complete under FPT reductions, so reducing $k$-\textsc{Clique} to a problem $Q$ proves that $Q$ is $\W[1]$-hard. The standard conjecture is $\FPT\neq\W[1]$; under this conjecture, a $\W[1]$-hard problem is not FPT. This is evidence, not an unconditional impossibility result. We use the complete-problem characterization here and omit the circuit-based definition of the W-hierarchy.
+\end{quote}
+
+This complements the $k$-\textsc{Coloring} example: it has an unconditional fixed-slice obstruction unless $\mathsf{P}=\mathsf{NP}$, while $\W[1]$-hardness is a different standard source of evidence against fixed-parameter tractability.
+
+\subsection{Vertex Cover is FPT}
+
+\begin{theorem}\label{thm:vc-fpt}
+\VC{} parameterized by the cover budget $k$ can be solved in $O(2^k(n+m))$ time.
+\end{theorem}
+
+The next section proves Theorem~\ref{thm:vc-fpt}. On an uncovered edge $uv$, every cover must include $u$ or $v$, so the algorithm explores those two choices with budget $k-1$. The search depth is limited by $k$. This is precisely the kind of algorithmic behavior captured by fixed-parameter tractability.
+
+FPT does not automatically mean fast for every input. The function $f(k)$ can be large, and constants matter in practice. It means that for a fixed small parameter, increasing the graph size contributes only a fixed polynomial factor.
+
+\section{Proof of Theorem~\ref{thm:vc-fpt}: branching algorithm}
+
+We prove Theorem~\ref{thm:vc-fpt} by giving a branching algorithm, proving that it decides Vertex Cover correctly, and bounding its running time.
+
+\subsection{The algorithm}
+
+Given a graph $G$ and a budget $k$, we ask whether at most $k$ vertices can be chosen to cover every edge.
+
+Suppose an edge $uv$ remains. Any valid vertex cover must include $u$ or $v$. This gives a complete two-way split: first try choosing $u$; if that cannot work, try choosing $v$. Each choice spends one unit of the budget and removes the chosen vertex and its incident edges.
+
+\begin{verbatim}
+VertexCover(G, k):
+    if k < 0: return NO
+    if E(G) is empty: return YES
+    if k == 0: return NO
+    choose an edge uv
+    if VertexCover(G - u, k - 1) = YES:
+        record u and return YES
+    if VertexCover(G - v, k - 1) = YES:
+        record v and return YES
+    return NO
+\end{verbatim}
+
+Here $G-u$ means remove $u$ and all edges of $u$. The algorithm records each selected endpoint, so it can return a vertex cover, not just a yes/no answer. The base cases distinguish a graph with no edges, which is already covered, from a graph with an edge and no budget left.
+
+\subsection{Correctness}
+
+\begin{theorem}
+\texttt{VertexCover(G,k)} returns YES exactly when $G$ has a vertex cover of size at most $k$.
+\end{theorem}
+\begin{proof}
+We prove the claim by induction on the nonnegative budget $k$, with the case $k<0$ handled by the algorithm's first test. If $G$ has no edges and $k\geq 0$, the empty set is a cover. If an edge remains and $k=0$, no zero-vertex set can cover it.
+
+Now let $uv$ be the selected edge. Every cover contains at least one of $u$ and $v$. A cover containing $u$ becomes a cover of $G-u$ of size at most $k-1$ after removing $u$. Conversely, adding $u$ to any cover of $G-u$ covers all edges of $G$: the removed edges were incident to $u$, and every other edge remains. The same argument holds for $v$. Thus the original instance is a yes-instance exactly when one recursive branch is. Each branch has smaller budget, so the induction hypothesis applies.
+\end{proof}
+
+\subsection{Running time}
+
+For an input graph with $n$ vertices and $m$ edges, let $T(k;n,m)$ be the worst-case running time on instances with budget at most $k$ and at most $n$ vertices and $m$ edges. At each nonterminal call we make at most two recursive calls with budget $k-1$. Selecting an edge and forming the reduced graphs takes $O(n+m)$ time, so
+\[
+T(k;n,m)\leq 2T(k-1;n,m)+O(n+m),\qquad T(0;n,m)=O(n+m).
+\]
+Expanding the recurrence gives $T(k;n,m)=O(2^k(n+m))$. Equivalently, the search tree has depth at most $k$ and fewer than $2^{k+1}$ nodes, with $O(n+m)$ work at each node. The exponential part depends only on the cover budget; the graph size appears only in a polynomial factor. This proves the running-time bound in Theorem~\ref{thm:vc-fpt} and shows that \VC{} is in $\FPT$ when parameterized by $k$.
+
+The bound is a worst-case guarantee. Many branches stop early when no edges remain or when the remaining budget reaches zero with an edge still present. Every branch consumes budget, so a small cover limit keeps the search tree shallow.
+
+\section{Kernelization and a quadratic kernel}
+
+\subsection{Preprocess the conflict graph}
+
+Branching searches through possible choices of cover vertices. \textbf{Kernelization} takes a different approach: simplify the graph before searching, while preserving the answer.
+
+\begin{definition}[Answer-preserving preprocessing]
+Let $Q\subseteq\Sigma^*\times\mathbb{N}$ be a parameterized problem. An answer-preserving preprocessing algorithm maps an instance $(x,k)$ in polynomial time to an instance $(x',k')$ such that
+\[
+(x,k)\in Q\quad\Longleftrightarrow\quad(x',k')\in Q.
+\]
+This condition preserves the yes/no answer, but by itself gives no bound on the size of the output.
+\end{definition}
+
+\begin{definition}[Kernelization and kernel]
+A kernelization for $Q$ is an answer-preserving preprocessing algorithm whose output also satisfies
+\[
+|x'|+k'\leq g(k)
+\]
+for some computable function $g$. The output $(x',k')$ is called a kernel. If $g$ is a polynomial, the kernel is a \textbf{polynomial kernel}; if $g(k)=O(k)$, it is a \textbf{linear kernel} under this size measure.
+\end{definition}
+
+Every kernel has some size bound depending only on $k$, but that bound need not be polynomial. Thus a polynomial kernel is a stronger guarantee than a general kernel. For graph problems, kernel bounds are also often stated structurally, such as “at most $3k$ vertices.” For a simple graph, this implies an encoding of size polynomial in $k$, since it has at most $O(k^2)$ edges. Here, “equivalent” means that the original and reduced instances have the same yes/no answer.
+
+\begin{theorem}[FPT and kernelization]
+Every decidable parameterized problem with fixed yes- and no-instances is in $\FPT$ if and only if it admits a kernelization.
+\end{theorem}
+\begin{proof}[Proof sketch]
+If $Q$ has a kernelization, first compute a kernel of size at most $g(k)$ and then decide it. Since $Q$ is decidable and the kernel has size bounded by a function of $k$, this takes time $h(k)+N^{O(1)}$ for some computable $h$, which is FPT.
+
+Conversely, suppose an algorithm $A$ decides $Q$ in time $f(k)N^c$. Choose an integer $d\geq c$. On input $(x,k)$, simulate $A$ for at most $(N+1)^{d+1}$ steps. This cutoff is polynomial in the input size. If $A$ halts within the cutoff, output a fixed yes-instance or fixed no-instance according to its answer. Otherwise output $(x,k)$ itself. In the latter case, $A$ takes more than $(N+1)^{d+1}$ steps. Since its running time is at most $f(k)N^d$, this implies $f(k)>N$. Thus the returned instance has size bounded by a function of $k$. In both cases the output is equivalent to the input, and the procedure runs in polynomial time, so it is a kernelization.
+\end{proof}
+
+This equivalence says that every FPT problem has some kernel, but it does not guarantee a polynomial kernel. The kernel bounds proved below are stronger quantitative results: $2k^2$ vertices and then $3k$ vertices.
+
+Preprocessing removes irrelevant vertices and settles choices forced by the budget. We record forced choices so a solution of the reduced instance can be lifted back to the original graph.
+
+\subsection{Safe reduction rules}
+
+\paragraph{Rule 1: remove isolated vertices.} An isolated vertex has no incident edges, so it is not needed in a vertex cover. Deleting it leaves the existence of a cover of size at most $k$ unchanged.
+
+\paragraph{Rule 2: force a high-degree vertex into the cover.} If some vertex $v$ has degree greater than $k$, every cover of size at most $k$ must contain $v$. Otherwise the cover would need to contain all of the more than $k$ neighbors of $v$ to cover its incident edges. We therefore include $v$, delete it and its incident edges, and decrease the budget by one.
+
+\begin{proof}[Why Rule 2 is safe]
+Any cover of the original graph must use $v$, so removing $v$ from that cover leaves a cover of $G-v$ within budget $k-1$. In the other direction, any cover of $G-v$ within budget $k-1$, together with $v$, covers the original graph.
+\end{proof}
+
+\paragraph{Rule 3: force the neighbor of a leaf into the cover.} Suppose $u$ has degree one, with unique neighbor $v$. There is a minimum vertex cover containing $v$: if a cover contains $u$ but not $v$, replace $u$ by $v$. The edge $uv$ remains covered, and since $u$ has no other incident edges, no other edge becomes uncovered. Thus we may include $v$, delete $v$ and its incident edges, and decrease the budget by one.
+
+Apply the rules until none applies. If the budget becomes negative, reject. Otherwise, every remaining vertex has degree at most $k$, and no isolated or degree-one vertices remain.
+
+\subsection{The quadratic-kernel theorem}
+
+\begin{theorem}
+In polynomial time, the rules either correctly reject the instance or produce an equivalent instance with at most $2k^2$ vertices.
+\end{theorem}
+\begin{proof}
+Let $k'\leq k$ be the current budget after applying the rules, and let $m$ be the number of remaining edges. Every remaining vertex has degree at most $k'$, since a vertex of degree greater than $k'$ would trigger Rule 2. A cover of size at most $k'$ can therefore cover at most $k'\cdot k'=(k')^2$ edges: each selected vertex is incident to at most $k'$ edges. This count may count an edge twice, which only makes the upper bound looser. If $m>(k')^2$, no cover of size at most $k'$ exists, so we can reject.
+
+Otherwise $m\leq (k')^2$. Since isolated vertices have been removed, every remaining vertex is an endpoint of some edge. The $m$ edges have at most $2m$ endpoints, so
+\[
+|V(G)|\leq 2m\leq 2(k')^2\leq 2k^2.
+\]
+The reduction and edge-count check take polynomial time.
+\end{proof}
+
+\subsection{Putting the rules together}
+
+Keep applying the safe rules to the current graph, decreasing the budget whenever a vertex is forced into the cover. Remove newly isolated vertices as they appear. Each reduction settles part of the cover decision and leaves an equivalent smaller instance. When no rule applies, the remaining graph has no isolated or degree-one vertices and maximum degree at most the current budget; the quadratic-kernel argument then bounds its size or rejects it. The recorded choices let us reconstruct a cover of the original graph.
+
+The quadratic kernel can be solved directly or passed to the branching algorithm.
+
+\section{Matchings and crown reductions}
+
+\subsection{Matchings: a lower bound on cover size}
+
+A \textbf{matching} is a set of edges no two of which share an endpoint. Each matching edge requires at least one of its endpoints to be in any vertex cover. Because the edges are disjoint, each requires a distinct cover vertex. Therefore a matching of size $r$ proves that every vertex cover has size at least $r$. If $r>k$, no cover of size at most $k$ exists.
+
+A matching is \textbf{maximal} if no further edge can be added; it is \textbf{maximum} if it has the largest size among all matchings. Every maximum matching is maximal, but a maximal matching need not be maximum. A maximal matching is easy to find greedily and is enough for the first step of the 3k-kernel proof.
+
+\subsection{Alternating paths}
+
+Given a matching, an alternating path switches between edges inside and outside the matching. If such a path starts and ends at unmatched vertices, it is an \textbf{augmenting path}: exchanging which edges on the path are matched increases the matching size by one. A maximum matching has no augmenting path. Alternating reachability from unmatched vertices is the mechanism used to expose a crown.
+
+\subsection{Crown decomposition}
+
+A crown separates a conflict-free group from the rest of the graph in a way that makes a safe reduction possible.
+
+\begin{definition}[Crown decomposition]
+A crown decomposition of $G$ is a partition $V(G)=C\mathbin{\dot\cup}H\mathbin{\dot\cup}R$ satisfying:
+\begin{itemize}
+  \item $C\neq\emptyset$;
+  \item $C$ is independent: there are no conflicts within $C$;
+  \item there are no edges between $C$ and $R$, so $H$ separates $C$ from $R$;
+  \item there is a matching between $C$ and $H$ that saturates $H$, meaning every vertex of $H$ is matched to a distinct vertex of $C$.
+\end{itemize}
+\end{definition}
+
+The matching condition implies that every vertex of $H$ has a neighbor in $C$; together with the separation condition, this gives $H=N(C)$. The matching gives a lower bound of $|H|$ on the number of cover vertices needed for its matched edges. To normalize any vertex cover $X$, consider each matched pair $(h,c)$. If $h\notin X$, then $c\in X$ because $hc$ is an edge; replace $c$ by $h$. The matched vertices in $C$ are distinct, so these replacements do not increase the size of $X$. Adding vertices to the cover cannot uncover an edge. After all replacements, $X$ contains all of $H$.
+
+\subsection{Crown-reduction theorem}
+
+\begin{theorem}
+If $(C,H,R)$ is a crown in $G$, then $(G-(C\cup H),k-|H|)$ is a yes-instance of \VC{} exactly when $(G,k)$ is.
+\end{theorem}
+\begin{proof}
+\textbf{Forward direction.} By the normalization argument, any cover of the original graph can be changed, without increasing its size, to one containing all of $H$. The edges touching $C\cup H$ are then covered: every neighbor of $C$ is in $H$, and all other edges incident to $H$ are covered by $H$ itself. Removing $C\cup H$ leaves a cover of the remaining graph with at most $k-|H|$ vertices.
+
+\textbf{Reverse direction.} Given a cover of $G-(C\cup H)$ of size at most $k-|H|$, add every vertex of $H$. Edges incident to $C$ go only to $H$, and every other edge removed with $H$ is also covered by $H$. Thus we obtain a cover of $G$ of size at most $k$. The two instances have the same answer.
+\end{proof}
+
+\section{The $3k$-vertex kernel theorem}
+
+\subsection{From a large conflict graph to a crown}
+
+The goal is a kernelization with a linear vertex bound: reduce every yes-instance to at most $3k$ vertices, where $k$ is the cover budget. If the graph has more than $3k$ vertices, we either certify that no cover of size at most $k$ exists or find a crown that can be safely removed. A large matching gives the certificate. If the matching is small, there are many unmatched vertices, which we use to construct the crown.
+
+\begin{lemma}[Constructive crown-finding lemma]
+If $|V(G)|>3k$, then in polynomial time we can either certify that $G$ has no vertex cover of size at most $k$, or find a crown $(C,H,R)$ with $|C|>|H|$.
+\end{lemma}
+\begin{proof}
+\textbf{Step 1: find an independent set of unmatched vertices.} Find a maximal matching $M$ greedily. If $|M|>k$, its disjoint edges require more than $k$ cover vertices, so reject. Otherwise, let $I$ be the unmatched vertices. Maximality ensures $I$ is independent: an edge between two unmatched vertices could be added to $M$. Also,
+\[
+|I|=|V(G)|-2|M|>3k-2k=k.
+\]
+
+\textbf{Step 2: match the independent set to the rest.} Build the bipartite graph with left side $I$, right side $V(G)\setminus I$, and all original edges between the two sides. Find a maximum matching $M'$ in polynomial time, for example using the Hopcroft--Karp algorithm. If $|M'|>k$, then $M'$ itself is a matching of more than $k$ edges in $G$, so reject. Otherwise, since $|I|>k\geq |M'|$, at least one left-side vertex is unmatched.
+
+\textbf{Step 3: follow alternating paths.} Starting at every unmatched vertex on the left, traverse nonmatching edges from left to right and matching edges from right to left. Let $C$ be the reached vertices on the left and $H$ the reached vertices on the right. No reached right-side vertex can be unmatched, or there would be an augmenting path for $M'$, contradicting that $M'$ is maximum. Each reached right-side vertex is therefore matched to a distinct reached left-side vertex. At least one reached left-side vertex is an unmatched starting vertex, so $|C|>|H|$. Every neighbor of a reached left-side vertex is reached: a nonmatching edge is traversed, and a matching edge leads to the right-side vertex through which that left-side vertex was reached. Thus $H=N(C)$, so there are no edges from $C$ to $R=V(G)\setminus(C\cup H)$. Since $C\subseteq I$, it is independent. The matching saturates $H$, and $C$ is nonempty because it contains an unmatched starting vertex. Hence $(C,H,R)$ is a crown decomposition with $|C|>|H|$.
+\end{proof}
+
+\subsection{The kernel theorem}
+
+\begin{theorem}
+\VC{} has a polynomial-time kernelization that either correctly rejects $(G,k)$ or returns an equivalent instance with at most $3k$ vertices.
+\end{theorem}
+\begin{proof}
+\textbf{Algorithm.} Remove isolated vertices. While $|V(G)|>3k$, apply the lemma. If it rejects, reject. Otherwise use the crown-reduction theorem: include $H$ in the cover, delete $C\cup H$, and replace $k$ by $k-|H|$. If the new budget is negative, reject. Because $|C|>|H|$, the set $C$ is nonempty, so every crown reduction removes at least one vertex.
+
+\textbf{Correctness.} Each matching larger than the current budget is a valid no-certificate. Removing isolated vertices preserves the answer, and each crown reduction preserves it by the preceding theorem. Thus every step either correctly rejects or leaves an equivalent instance.
+
+\textbf{Size bound.} The process stops when the remaining graph has at most $3k'$ vertices, where $k'$ is the current budget. The budget only decreases, so $k'\leq k$, and the final graph has at most $3k$ vertices.
+
+\textbf{Running time.} Each crown removes at least one vertex, so there are at most $n$ iterations. Each iteration finds matchings in polynomial time. The full preprocessing is therefore polynomial-time.
+\end{proof}
+
+The proof uses three reusable ideas: a large matching certifies that the budget is too small; otherwise alternating reachability finds a crown; and crown reduction safely removes that region while decreasing the budget.
+
+\subsection{Why the bound is useful}
+
+The quadratic kernel from the previous lecture may leave as many as $2k^2$ vertices, while this theorem leaves at most $3k$. The coefficient 3 comes from the threshold in the crown-finding lemma. Either bound is useful for fixed-parameter tractability: once the kernel is small, we can run a search algorithm on it. The linear vertex bound is asymptotically smaller because it leaves fewer vertices as $k$ grows. It does not by itself assert that the graph encoding has only $O(k)$ bits.
+
+\section{References / Next Steps}
+
+\begin{enumerate}
+  \item Marek Cygan, Fedor V. Fomin, \L{}ukasz Kowalik, Daniel Lokshtanov, D\'aniel Marx, Marcin Pilipczuk, Micha\l{} Pilipczuk, and Saket Saurabh, \emph{Parameterized Algorithms}, Springer, 2015. \url{https://parameterized-algorithms.mimuw.edu.pl/}.
+  \item Dalhousie University, ``Crown reduction for Vertex Cover'' and ``Kernelization and Fixed-Parameter Tractability.'' \url{https://web.cs.dal.ca/~nzeh/Teaching/4113/book/kernelization/crown_reduction/vc.html}; \url{https://web.cs.dal.ca/~nzeh/Teaching/4113/book/kernelization/kernel_equals_fpt.html}.
+  \item YouTube, ``Parameterized Complexity lecture playlist.'' \url{https://youtube.com/playlist?list=PLyqSpQzTE6M_0KLR2_FVBN4Rnvq_PlcrA&si=XMXWIF-G2LvKruWu}.
+\end{enumerate}
+
+\subsection*{Conclusion and impact}
+
+This viewpoint adds more than the label NP-complete: it asks which parameters capture the hard part of a problem and whether instances with a small parameter can be solved efficiently. In Vertex Cover, branching and kernelization show how a small cover budget can make large instances manageable.
+
+\subsection*{Further directions}
+
+Natural next topics include stronger kernel bounds, kernel lower bounds, and parameterized hardness. They provide further context but are not needed to follow the branching algorithm or the $3k$-vertex proof in these notes.
+
+\end{document}
